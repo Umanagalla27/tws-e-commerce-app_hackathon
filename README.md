@@ -1,5 +1,3 @@
-# 🛍️ EasyShop - Modern E-commerce Platform
-
 [![Next.js](https://img.shields.io/badge/Next.js-14.1.0-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0.0-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-8.1.1-green?style=flat-square&logo=mongodb)](https://www.mongodb.com/)
@@ -19,6 +17,14 @@ EasyShop is a modern, full-stack e-commerce platform built with Next.js 14, Type
 - 📦 Multiple product categories
 - 👤 User profiles and order history
 - 🌙 Dark/Light theme support
+
+## 📝 Summary of Changes
+The project is a Next.js e-commerce application with comprehensive AWS infrastructure using Terraform, EKS, and GitOps with ArgoCD.
+
+- **Deployment Strategy**: Follows a multi-phase approach: Infrastructure provisioning, CI/CD setup with Jenkins, Kubernetes deployment via ArgoCD, and observability with Prometheus/Grafana and EFK stack.
+- **Architecture**: Uses AWS EKS for container orchestration, Application Load Balancer for ingress, EBS CSI for storage, and Helm charts for service deployments.
+- **Monitoring & Logging**: Includes Prometheus/Grafana for metrics, AlertManager for Slack notifications, and Elasticsearch/Filebeat/Kibana for centralized logging.
+- **Prerequisites**: Requires AWS credentials, Terraform, kubectl, AWS CLI, and proper IAM permissions configured before starting.
 
 ## 🏗️ Architecture
 
@@ -45,6 +51,161 @@ EasyShop follows a three-tier architecture pattern:
 - Data Models
 - CRUD Operations
 - Data Validation
+
+## 🚀 Execution Steps
+
+### Step 1: Prerequisites and Local Environment Setup
+Prepare the local development environment with required tools and AWS credentials.
+
+#### 1.1: Install Terraform
+Install Terraform on the local machine to manage infrastructure as code.
+- **Linux/macOS**:
+  ```bash
+  curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
+  sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+  sudo apt-get update && sudo apt-get install terraform
+  ```
+- **Verify installation**: `terraform -v`
+
+#### 1.2: Install AWS CLI
+Install AWS Command Line Interface to interact with AWS services.
+- **Download & Install**:
+  ```bash
+  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  sudo apt install unzip
+  unzip awscliv2.zip
+  sudo ./aws/install
+  ```
+- **Configure AWS credentials**: 
+  ```bash
+  aws configure
+  ```
+  (Provide Access Key ID, Secret Access Key, default region, output format)
+
+#### 1.3: Clone Repository and Generate SSH Keys
+Clone the project repository and generate SSH key pair for EC2 access.
+- **Clone**: `git clone https://github.com/LondheShubham153/tws-e-commerce-app.git`
+- **Navigate**: `cd tws-e-commerce-app/terraform`
+- **Generate Keys**: 
+  ```bash
+  ssh-keygen -f terra-key
+  chmod 400 terra-key
+  ```
+
+### Step 2: Infrastructure Provisioning with Terraform
+Deploy AWS infrastructure including VPC, EKS cluster, EC2 instances, and networking components.
+
+#### 2.1: Initialize & Plan
+- **Initialize**: `terraform init`
+- **Plan**: `terraform plan` (Review resources: VPC, EKS, Node groups, EC2)
+
+#### 2.2: Apply Configuration
+- **Apply**: `terraform apply` (Confirm with `yes`)
+- **Wait**: 15-20 minutes for EKS cluster provisioning.
+- **Note Outputs**: EC2 Public IP, EKS Cluster Name, Region.
+
+#### 2.3: Access EC2 Bastion
+- **SSH**: `ssh -i terra-key ubuntu@<public-ip>`
+
+### Step 3: Configure EKS Cluster Access
+
+#### 3.1: Configure AWS CLI on Bastion
+- SSH into Bastion.
+- Run `aws configure` with validated IAM credentials.
+- Verify: `aws sts get-caller-identity`
+
+#### 3.2: Update Kubeconfig
+- **Command**: `aws eks --region eu-west-1 update-kubeconfig --name tws-eks-cluster`
+- **Verify**: `kubectl get nodes`
+
+#### 3.3: Install AWS Load Balancer Controller
+- Create IAM OIDC provider: `eksctl utils associate-iam-oidc-provider ...`
+- Create IAM Policy & Service Account (refer to AWS docs/script).
+- Install via Helm: `helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system ...`
+
+#### 3.4: Install EBS CSI Driver
+- Create IAM Role for EBS CSI.
+- Install Addon: `eksctl create addon --name aws-ebs-csi-driver ...`
+
+### Step 4: Jenkins CI/CD Pipeline Setup
+
+#### 4.1: Access & Initialize Jenkins
+- URL: `http://<public_IP>:8080`
+- Admin Password: `sudo cat /var/lib/jenkins/secrets/initialAdminPassword`
+- Install suggested plugins.
+
+#### 4.2: Install Plugins
+- **Manage Jenkins -> Plugins**: Install "Docker Pipeline" and "Pipeline View".
+
+#### 4.3: Configure Credentials (Global)
+- **GitHub**: ID `github-credentials` (Username/Token)
+- **DockerHub**: ID `docker-hub-credentials` (Username/Token)
+
+#### 4.4: Configure Shared Library
+- **System Configuration**: Add Global Pipeline Library named "Shared".
+- **Repo**: `https://github.com/<your-username>/jenkins-shared-libraries`
+
+#### 4.5: Create Pipeline Job
+- **Name**: "EasyShop"
+- **Script**: Pipeline from SCM -> Git -> `tws-e-commerce-app` -> `Jenkinfile`
+
+#### 4.6: Webhook & Build
+- Configure GitHub Webhook to Jenkins URL.
+- Trigger "Build Now".
+
+### Step 5: ArgoCD Installation and Configuration
+
+#### 5.1: Install ArgoCD
+- `kubectl create namespace argocd`
+- `helm install my-argo-cd argo/argo-cd --version 8.0.10 -n argocd`
+
+#### 5.2: Configure Ingress (ALB)
+- Edit `argocd-values.yaml`: Enable Ingress, set `alb` class, add annotations for SSL/Listening ports.
+- Upgrade: `helm upgrade my-argo-cd argo/argo-cd ...`
+
+#### 5.3: Access ArgoCD
+- URL: `https://argocd.devopsdock.site`
+- Password: `kubectl -n argocd get secret argocd-initial-admin-secret ...`
+
+### Step 6: Application Deployment via ArgoCD
+
+#### 6.1: Create App
+- **Source**: `tws-e-commerce-app` repo, path `kubernetes`.
+- **Destination**: `tws-e-commerce-app` namespace.
+- **Sync**: Automatic.
+
+#### 6.2: DNS & Access
+- Create CNAME for `easyshop.devopsdock.site` pointing to ALB.
+- Access application in browser.
+
+### Step 7: Metrics & HPA
+- Install Metrics Server: `helm install metrics-server metrics-server/metrics-server`
+- Verify `kubectl top pods`
+
+### Step 8: Monitoring (Prometheus/Grafana)
+- Install `kube-prometheus-stack` in `monitoring` namespace.
+- Configure Ingress for Grafana/Prometheus/AlertManager.
+- Configure Slack Alerts in AlertManager values.
+- Access Grafana: `https://grafana.devopsdock.site` (Default admin/prom-operator)
+
+### Step 9: Centralized Logging (EFK)
+
+#### 9.1: Elasticsearch
+- Install via Helm: `elastic/elasticsearch` in `logging` namespace.
+- Apply EBS StorageClass.
+
+#### 9.2: Filebeat
+- Install `elastic/filebeat` as DaemonSet.
+- Configure `filebeat.inputs` for `/var/log/containers/*easyshop*.log`.
+
+#### 9.3: Kibana
+- Install `elastic/kibana`.
+- Configure Ingress (`logs-kibana.devopsdock.site`).
+- Generate Service Token or use `elastic` user credentials.
+
+#### 9.4: Visualize
+- Create Data View `filebeat-*` in Kibana.
+- Discover and analyze application logs.
 
 ## PreRequisites
 
