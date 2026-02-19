@@ -1,0 +1,33 @@
+replicas: 3
+minimumMasterNodes: 2
+clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
+
+# Resource Requests & Limits (Optimized for Single Node Dev Cluster)
+# In a real production multi-node cluster, use requests: cpu: "1000m", memory: "2Gi"
+resources:
+  requests:
+    cpu: "10m"
+    memory: "100Mi"
+  limits:
+    memory: "1Gi"
+
+# JVM Heap Size (Set to 50% of Memory Limit)
+esJavaOpts: "-Xmx512m -Xms512m"
+
+# Storage Configuration
+volumeClaimTemplate:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: "ebs-aws"
+  resources:
+    requests:
+      storage: 10Gi # Reduced for dev environment
+
+# Scheduling & Anti-Affinity
+antiAffinity: "soft"
+
+# Security (Enabled by default in 8.x)
+protocol: https
+http:
+  tls:
+    selfSignedCertificate:
+      disabled: false
