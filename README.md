@@ -1,272 +1,530 @@
-🛒 EasyShop E-Commerce Platform — DevOps Deployment Guide
+# 🛒 EasyShop E-Commerce Platform — DevOps Deployment Guide
 
-Production-Grade GitOps Deployment on AWS EKS with CI/CD, Observability, and Centralized Logging
+> Production-grade GitOps deployment of a Next.js e-commerce application on AWS using Terraform, EKS, Jenkins, ArgoCD, and full observability (Prometheus/Grafana + EFK logging).
 
-[![Next.js](https://img.shields.io/badge/Next.js-14.1.0-black?style=flat-square&logo=next.js)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0.0-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-8.1.1-green?style=flat-square&logo=mongodb)](https://www.mongodb.com/)
-[![Redux](https://img.shields.io/badge/Redux-2.2.1-purple?style=flat-square&logo=redux)](https://redux.js.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+---
 
+## 📌 Project Overview
 
-📌 Project Overview
+This project demonstrates an **end-to-end DevOps lifecycle**:
 
-This project deploys a Next.js E-Commerce Application on AWS EKS using a GitOps-driven DevOps architecture.
+* Infrastructure provisioned using **Terraform (IaC)**
+* Application deployed to **AWS EKS (Kubernetes)**
+* CI/CD handled by **Jenkins Pipelines**
+* Continuous delivery via **GitOps (ArgoCD)**
+* Monitoring using **Prometheus + Grafana + AlertManager**
+* Centralized logging using **Elasticsearch + Filebeat + Kibana (EFK)**
+* Persistent storage via **AWS EBS CSI Driver**
+* Secure ingress via **AWS Application Load Balancer (ALB)**
 
-🧩 Key Highlights
+---
 
-Infrastructure as Code: Terraform provisions AWS resources (VPC, EKS, EC2, IAM).
+## 🏗️ Architecture
 
-CI/CD Pipeline: Jenkins builds and pushes Docker images.
-
-GitOps Deployment: ArgoCD continuously syncs Kubernetes manifests.
-
-Ingress: AWS Application Load Balancer (ALB).
-
-Storage: AWS EBS CSI Dynamic Provisioning.
-
-Monitoring: Prometheus + Grafana + AlertManager.
-
-Centralized Logging: Elasticsearch + Filebeat + Kibana (EFK).
-
-Autoscaling: Metrics Server + Horizontal Pod Autoscaler.
-
-🏗️ Architecture Overview
+```
 Developer → GitHub → Jenkins CI → DockerHub
                           ↓
                        ArgoCD (GitOps)
                           ↓
                      AWS EKS Cluster
                           ↓
-        ┌────────────── Observability ───────────────┐
-        │ Prometheus | Grafana | AlertManager (Slack)│
-        └────────────────────────────────────────────┘
+        ┌──────────── Observability ─────────────┐
+        │ Prometheus | Grafana | AlertManager    │
+        └────────────────────────────────────────┘
                           ↓
               Elasticsearch + Filebeat + Kibana
+```
 
-✅ Prerequisites
+---
 
-Ensure the following tools are installed locally:
+## ✅ Prerequisites
 
-Tool	Purpose
-Terraform	Infrastructure provisioning
-AWS CLI	AWS authentication
-kubectl	Kubernetes control
-Helm	Package management
-Git	Source control
+Install the following tools locally:
 
-You must also have:
+| Tool      | Purpose                     |
+| --------- | --------------------------- |
+| Terraform | Infrastructure provisioning |
+| AWS CLI   | AWS authentication          |
+| kubectl   | Kubernetes management       |
+| Helm      | Kubernetes package manager  |
+| Git       | Source control              |
 
-AWS IAM user with EKS, EC2, IAM, VPC, ELB permissions
+Ensure AWS IAM permissions for:
 
-A registered domain in Route53
+* EC2
+* EKS
+* VPC
+* IAM
+* ELB
+* Route53
 
-DockerHub account
+---
 
-⚙️ Step 1 — Local Environment Setup
-Install Terraform
+## ⚙️ Step 1 — Local Setup
+
+### Install Terraform
+
+```bash
 curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-sudo apt-add-repository \
-"deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
 sudo apt-get update && sudo apt-get install terraform
 terraform -v
+```
 
-Install AWS CLI
+### Install AWS CLI
+
+```bash
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
 sudo apt install unzip
 unzip awscliv2.zip
 sudo ./aws/install
 aws configure
+```
 
-📦 Step 2 — Infrastructure Provisioning (Terraform)
+---
 
-Clone repository:
+## 📦 Step 2 — Provision Infrastructure (Terraform)
 
+```bash
 git clone https://github.com/LondheShubham153/tws-e-commerce-app.git
 cd tws-e-commerce-app/terraform
-
-
-Generate SSH key:
-
 ssh-keygen -f terra-key
 chmod 400 terra-key
-
-
-Initialize Terraform:
 
 terraform init
 terraform plan
 terraform apply
+```
 
+Provisioning takes **15–20 minutes**.
 
-⏱️ Provisioning takes 15–20 minutes.
+---
 
-🔐 Step 3 — Access Bastion Host
+## 🔐 Step 3 — Access Bastion Host
+
+```bash
 ssh -i terra-key ubuntu@<public-ip>
-
-
-Configure AWS access:
-
 aws configure
 aws sts get-caller-identity
+```
 
-☸️ Step 4 — Configure EKS Access
+---
+
+## ☸️ Step 4 — Configure EKS Access
+
+```bash
 aws eks --region <region> update-kubeconfig --name tws-eks-cluster
 kubectl get nodes
+```
 
-🔄 Step 5 — Install AWS Controllers
-AWS Load Balancer Controller
+---
+
+## 🔄 Step 5 — Install AWS Controllers
+
+### AWS Load Balancer Controller
+
+```bash
 helm repo add eks https://aws.github.io/eks-charts
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
 -n kube-system --set clusterName=tws-eks-cluster
+```
 
-EBS CSI Driver
+### EBS CSI Driver
+
+```bash
 eksctl create addon --name aws-ebs-csi-driver --cluster tws-eks-cluster
+```
 
-🚀 Step 6 — Jenkins CI/CD Setup
+---
+
+## 🚀 Step 6 — Jenkins CI/CD Setup
 
 Access Jenkins:
 
+```
 http://<EC2-IP>:8080
-
+```
 
 Retrieve admin password:
 
+```bash
 sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+```
 
+Install plugins:
 
-Install Plugins:
+* Docker Pipeline
+* Pipeline View
 
-Docker Pipeline
+Configure credentials:
 
-Pipeline View
+* GitHub PAT
+* DockerHub credentials
 
-Configure Credentials:
+---
 
-GitHub Token
+## 🔁 Step 7 — Install ArgoCD (GitOps)
 
-DockerHub Credentials
-
-🔁 Step 7 — GitOps with ArgoCD
-
-Install ArgoCD:
-
+```bash
 kubectl create namespace argocd
 helm repo add argo https://argoproj.github.io/argo-helm
 helm install my-argo-cd argo/argo-cd -n argocd
+```
 
+Get password:
 
-Retrieve login password:
-
+```bash
 kubectl -n argocd get secret argocd-initial-admin-secret \
 -o jsonpath="{.data.password}" | base64 -d
+```
 
+Login at:
 
-Access UI:
-
+```
 https://argocd.devopsdock.site
+```
 
-🛍️ Step 8 — Deploy EasyShop Application
+---
 
-Create ArgoCD Application → Sync Kubernetes manifests → Deploy to namespace:
+## 🛍️ Step 8 — Deploy Application via ArgoCD
 
+Create a new application pointing to:
+
+```
+https://github.com/<your-username>/tws-e-commerce-app
+```
+
+Namespace:
+
+```
 tws-e-commerce-app
-
+```
 
 Verify:
 
+```bash
 kubectl get pods -n tws-e-commerce-app
+```
 
-📊 Step 9 — Monitoring Stack (Prometheus + Grafana)
+---
 
-Install kube-prometheus-stack:
+## 📊 Step 9 — Monitoring (Prometheus + Grafana)
 
+```bash
 kubectl create namespace monitoring
 helm install my-kube-prometheus-stack prometheus-community/kube-prometheus-stack \
 -n monitoring
+```
 
+Retrieve Grafana password:
 
-Access Grafana:
-
-https://grafana.devopsdock.site
-
-
-Retrieve password:
-
+```bash
 kubectl get secret my-kube-prometheus-stack-grafana -n monitoring \
 -o jsonpath="{.data.admin-password}" | base64 -d
+```
 
-🔔 Step 10 — Slack Alerting
+Access:
 
-Create Slack Webhook → Add to AlertManager config:
+```
+https://grafana.devopsdock.site
+```
 
+---
+
+## 🔔 Step 10 — Slack Alerting
+
+Configure AlertManager webhook:
+
+```yaml
 receivers:
 - name: slack-notification
   slack_configs:
   - api_url: <webhook-url>
     channel: "#alerts"
+```
 
-📈 Step 11 — Metrics Server & HPA
+---
+
+## 📈 Step 11 — Metrics Server & HPA
+
+```bash
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
 helm install metrics-server metrics-server/metrics-server -n kube-system
 kubectl top nodes
+```
 
-📚 Step 12 — Centralized Logging (EFK Stack)
-🔎 Elasticsearch (Log Storage)
+---
+
+## 📚 Step 12 — Centralized Logging (EFK Stack)
+
+### Elasticsearch
+
+```bash
 kubectl create namespace logging
 helm repo add elastic https://helm.elastic.co
 helm install my-elasticsearch elastic/elasticsearch --version 8.5.1 -n logging
+```
 
+### Filebeat
 
-Create StorageClass:
-
-provisioner: ebs.csi.aws.com
-volumeBindingMode: WaitForFirstConsumer
-
-🚚 Filebeat (Log Shipping)
+```bash
 helm install my-filebeat elastic/filebeat --version 8.5.1 -n logging
-
+```
 
 Configure:
 
+```yaml
 filebeat.inputs:
 - type: container
   paths:
   - /var/log/containers/*easyshop*.log
+```
 
-📊 Kibana (Visualization)
+### Kibana
+
+```bash
 helm install my-kibana elastic/kibana --version 8.5.1 -n logging
+```
 
+Access:
 
-Enable ALB ingress and expose:
-
+```
 https://logs-kibana.devopsdock.site
+```
 
+Retrieve password:
 
-Retrieve Elasticsearch password:
-
+```bash
 kubectl get secret elasticsearch-master-credentials -n logging \
 -o jsonpath='{.data.password}' | base64 -d
-
+```
 
 Create Data View:
 
+```
 filebeat-*
+```
 
-🎯 Final Outcome
+---
 
-✔ Fully automated GitOps CI/CD pipeline
-✔ Highly available AWS EKS deployment
-✔ Real-time metrics, alerts, and dashboards
-✔ Centralized application + cluster logging
-✔ Scalable, production-ready architecture
+## 🎯 Final Outcome
 
-📎 Useful Verification Commands
+✔ Automated CI/CD pipeline
+✔ GitOps-based Kubernetes deployment
+✔ Observability with metrics + logs
+✔ Scalable AWS-native architecture
+✔ Production-ready DevOps implementation
+
+---
+
+## 📎 Verification Commands
+
+```bash
 kubectl get pods -A
 kubectl get ingress -A
 kubectl get pvc -A
 kubectl top pods -A
-## PreRequisites
+```
+
+---
+
+## 🚀 Suggested Enhancements
+
+* Enable Cluster Autoscaler
+* Use AWS OpenSearch (managed Elasticsearch alternative)
+* Integrate AWS Secrets Manager
+* Implement Argo Rollouts (Blue/Green / Canary)
+
+---
+
+> This project demonstrates a complete real-world DevOps platform deployment using cloud-native best practices.
+
+---
+
+## 📛 Badges
+
+![AWS](https://img.shields.io/badge/Cloud-AWS-orange?logo=amazonaws)
+![Kubernetes](https://img.shields.io/badge/Orchestrator-Kubernetes-blue?logo=kubernetes)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-623CE4?logo=terraform)
+![Jenkins](https://img.shields.io/badge/CI-Jenkins-D24939?logo=jenkins)
+![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-EF7B4D?logo=argo)
+![Prometheus](https://img.shields.io/badge/Monitoring-Prometheus-E6522C?logo=prometheus)
+![Grafana](https://img.shields.io/badge/Dashboard-Grafana-F46800?logo=grafana)
+![Elastic](https://img.shields.io/badge/Logging-Elastic-005571?logo=elasticsearch)
+
+---
+
+## 🏗️ Detailed Architecture Diagram
+
+```
+                        ┌────────────────────────────┐
+                        │        Developers          │
+                        └────────────┬───────────────┘
+                                     │ Push Code
+                                     ▼
+                           ┌──────────────────┐
+                           │     GitHub       │
+                           └────────┬─────────┘
+                                    │ Webhook
+                                    ▼
+                           ┌──────────────────┐
+                           │     Jenkins CI   │
+                           │ Build + Test +   │
+                           │ Docker Image     │
+                           └────────┬─────────┘
+                                    │ Push
+                                    ▼
+                               DockerHub
+                                    │
+                                    ▼
+                           ┌──────────────────┐
+                           │     ArgoCD       │
+                           │   (GitOps Sync)  │
+                           └────────┬─────────┘
+                                    ▼
+                         ┌──────────────────────┐
+                         │      AWS EKS         │
+                         │  Kubernetes Cluster  │
+                         └────────┬─────────────┘
+                                  │
+        ┌─────────────────────────┼─────────────────────────┐
+        ▼                         ▼                         ▼
+ Application Pods         Prometheus Stack            EFK Stack
+ (Next.js EasyShop)       Metrics Monitoring          Centralized Logs
+
+        ▼                         ▼                         ▼
+   AWS ALB Ingress         Grafana Dashboards          Kibana UI
+
+        ▼                         ▼                         ▼
+     End Users              AlertManager → Slack       Elasticsearch
+```
+
+---
+
+## 📁 Repository Folder Structure
+
+```
+tws-e-commerce-app/
+│
+├── terraform/                 # Infrastructure as Code (AWS Resources)
+│   ├── vpc.tf
+│   ├── eks.tf
+│   ├── ec2.tf
+│   └── outputs.tf
+│
+├── kubernetes/                # Kubernetes Manifests (GitOps Source)
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   └── hpa.yaml
+│
+├── Jenkinsfile                # CI/CD Pipeline Definition
+│
+├── docker/                    # Docker Build Context
+│   └── Dockerfile
+│
+├── helm-values/               # Custom Helm Values (Monitoring/Logging)
+│
+└── README.md
+```
+
+---
+
+## 🛠️ Troubleshooting Guide
+
+### ❗ ArgoCD Application Not Syncing
+
+```bash
+kubectl get pods -n argocd
+kubectl logs <argocd-pod> -n argocd
+```
+
+Ensure repository URL and branch are correct.
+
+---
+
+### ❗ ALB Ingress Not Created
+
+Check AWS Load Balancer Controller:
+
+```bash
+kubectl get pods -n kube-system | grep load-balancer
+```
+
+Verify IAM role and annotations.
+
+---
+
+### ❗ Pods Stuck in Pending State
+
+Likely StorageClass / EBS CSI issue:
+
+```bash
+kubectl get pvc -A
+kubectl describe pvc <name>
+```
+
+Ensure EBS CSI driver is installed.
+
+---
+
+### ❗ Metrics Not Showing in Grafana
+
+```bash
+kubectl top nodes
+```
+
+If not working → metrics-server not installed properly.
+
+---
+
+### ❗ Kibana "Server Not Ready Yet"
+
+Check Elasticsearch health:
+
+```bash
+kubectl logs elasticsearch-master-0 -n logging
+kubectl get pvc -n logging
+```
+
+Ensure:
+
+* PVC is Bound
+* vm.max_map_count is set
+* Kibana connected to correct ES service
+
+---
+
+### ❗ Jenkins Pipeline Fails to Push Image
+
+Verify credentials:
+
+* DockerHub username/password configured
+* Token has push access
+
+Test manually:
+
+```bash
+docker login
+```
+
+---
+
+## 📚 Learning Outcomes
+
+This project demonstrates:
+
+* Real-world GitOps workflow
+* Kubernetes production deployment
+* Observability implementation
+* AWS-native scalable architecture
+* CI/CD automation at enterprise level
+
+---
+
+**Author:** DevOps Implementation Project
+**Platform:** AWS EKS + GitOps + Observability Stack
+
 
 > [!IMPORTANT]  
 > Before you begin setting up this project, make sure the following tools are installed and configured properly on your system:
